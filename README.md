@@ -69,35 +69,7 @@ pip install -r requirements.txt
 
 ---
 
-# 4 - **Configuração do Banco de Dados**
-
-O projeto utiliza MySQL para armazenamento de dados. Antes de rodar o projeto, certifique-se de configurar o banco de dados corretamente.
-
-- Instale o MySQL em sua máquina.
-
-- Crie um banco de dados para o projeto.
-
-- Adicione as configurações do banco de dados no arquivo settings.py do Django. Exemplo:
-
-```
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'recicla_pilhas',
-        'USER': 'seu_usuario',
-        'PASSWORD': 'sua_senha',
-        'HOST': 'localhost',
-        'PORT': '3306',
-    }
-}
-```
-Realize as migrações para configurar o banco de dados:
-```
-python manage.py migrate
-```
----
-
-## 5 - **Verifique o Setup**
+## 4 - **Verifique o Setup**
 
 Certifique-se de que todas as dependências foram instaladas corretamente executando o comando:
 
@@ -107,13 +79,13 @@ pip list
 
 ---
 
-## 6 - **Inicie o Projeto**
+## 5 - **Inicie o Projeto**
 
 Agora você está pronto para executar o projeto!
 
 Rode o código abaixo no terminal e divirta-se.
 ```bash
-python manage.py runserver
+streamlit run app.py
 ```
 
 ## :book: **Bibliotecas**
@@ -121,11 +93,8 @@ python manage.py runserver
 Esse projeto foi desenvolvido com as seguintes bibliotecas, linguagens e ferramentas:
 
 - Python
-   - Django
-- MySql
-- HTML
-- CSS
-- JavaScript
+   - Streamlit
+   - Pandas
 
 ## 💻 **Projeto**
 
