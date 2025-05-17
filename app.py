@@ -37,7 +37,6 @@ def load_data(path: str) -> pd.DataFrame:
         if df[col].dtype == object:
             df[col] = df[col].str.strip()
 
-    # Conversões numéricas
     for col in ['MdaPotenciaOutorgadaKw', 'MdaPotenciaFiscalizadaKw', 'MdaGarantiaFisicaKw']:
         if col in df:
             df[col] = df[col].str.replace(',', '.', regex=False).pipe(pd.to_numeric, errors='coerce').fillna(0)
@@ -51,30 +50,26 @@ def load_data(path: str) -> pd.DataFrame:
     if 'MdaPotenciaFiscalizadaKw' in df:
         df['potencia'] = df['MdaPotenciaFiscalizadaKw']
 
-    # Aplica nomes amigáveis ao tipo de geração
     df['Tipo'] = df['SigTipoGeracao'].map(TIPO_GERACAO_NOMES).fillna(df['SigTipoGeracao'])
 
-    # Extrai primeiro município se houver múltiplos
     if 'DscMuninicpios' in df:
         df['Municipio'] = df['DscMuninicpios'].str.split(';').str[0]
 
     return df
 
-# Carrega os dados
 CSV_FILE = os.path.join(os.path.dirname(__file__), 'siga-empreendimentos-geracao.csv')
 df = load_data(CSV_FILE)
 
-# Interface
-st.title("🗺️ Mapa das Usinas de Geração (ANEEL)")
-st.sidebar.header("Filtros")
+st.image("logo.png", width=150)
+st.title("BioEnergy")
+st.write("A plataforma BioEnergy oferece uma visão completa e interativa sobre as usinas de geração de energia no Brasil. Explore diferentes tipos de geração de energia, visualize sua localização no mapa e analise a potência instalada em cada região.")
 
-# Filtro por tipo
+st.sidebar.header("Filtros")
 tipos = df['Tipo'].dropna().unique().tolist()
 tipos.sort()
 filtro = st.sidebar.multiselect("Tipo de Geração", tipos, default=tipos)
 df_filtrado = df[df['Tipo'].isin(filtro)]
 
-# Define cores fixas por tipo
 cores_tipo = {
     'Hidrelétrica': [0, 100, 255],
     'Pequena Central Hidrelétrica': [0, 180, 255],
@@ -89,12 +84,9 @@ cores_tipo = {
     'Outros': [180, 180, 180]
 }
 
-# Prepara dados para o mapa
 df_mapa = df_filtrado[['lat', 'lon', 'NomEmpreendimento', 'Tipo', 'Municipio', 'SigUFPrincipal', 'potencia']].dropna()
-
 df_mapa['color'] = df_mapa['Tipo'].map(cores_tipo)
 
-# Cria camada do mapa com pydeck
 layer = pdk.Layer(
     "ScatterplotLayer",
     data=df_mapa,
@@ -104,16 +96,11 @@ layer = pdk.Layer(
     pickable=True
 )
 
-# Tooltip interativo
 tooltip = {
-    "html": "<b>{NomEmpreendimento}</b><br/>"
-            "Tipo: {Tipo}<br/>"
-            "Local: {Municipio} - {SigUFPrincipal}<br/>"
-            "Potência: {potencia} kW",
+    "html": "<b>{NomEmpreendimento}</b><br/>Tipo: {Tipo}<br/>Local: {Municipio} - {SigUFPrincipal}<br/>Potência: {potencia} kW",
     "style": {"backgroundColor": "steelblue", "color": "white"}
 }
 
-# Exibe o mapa
 st.markdown("---")
 st.markdown("### Mapa de Usinas")
 st.pydeck_chart(pdk.Deck(
@@ -122,24 +109,3 @@ st.pydeck_chart(pdk.Deck(
     layers=[layer],
     tooltip=tooltip
 ))
-
-# Legenda
-st.markdown("#### 🔵 Legenda das cores:")
-for tipo, cor in cores_tipo.items():
-    st.markdown(f"<span style='display:inline-block;width:12px;height:12px;background-color:rgb{tuple(cor)};border-radius:50%;margin-right:8px'></span>{tipo}", unsafe_allow_html=True)
-
-# Gráfico por estado
-st.markdown("---")
-st.markdown("### Potência Total por Estado")
-if 'SigUFPrincipal' in df_filtrado and 'potencia' in df_filtrado:
-    df_estado = (
-        df_filtrado
-        .groupby('SigUFPrincipal')['potencia']
-        .sum()
-        .sort_values(ascending=False)
-        .reset_index()
-        .rename(columns={'SigUFPrincipal': 'Estado', 'potencia': 'Potência (kW)'})
-    )
-    st.bar_chart(data=df_estado.set_index('Estado'))
-else:
-    st.write("Dados de UF ou potência não encontrados para o gráfico.")
