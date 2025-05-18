@@ -93,11 +93,12 @@ estados.sort()
 filtro_estado = st.sidebar.multiselect("Estado", estados, default=estados)
 df_filtrado = df_filtrado[df_filtrado['SigUFPrincipal'].isin(filtro_estado)]
 
-if filtro_estado:
-    municipios = df_filtrado['Municipio'].dropna().unique().tolist()
-    municipios.sort()
-    filtro_municipio = st.sidebar.multiselect("Município", municipios, default=municipios)
-    df_filtrado = df_filtrado[df_filtrado['Municipio'].isin(filtro_municipio)]
+# Removendo o filtro de município
+# if filtro_estado:
+#     municipios = df_filtrado['Municipio'].dropna().unique().tolist()
+#     municipios.sort()
+#     filtro_municipio = st.sidebar.multiselect("Município", municipios, default=municipios)
+#     df_filtrado = df_filtrado[df_filtrado['Municipio'].isin(filtro_municipio)]
 
 potencia_min, potencia_max = st.sidebar.slider("Faixa de Potência (kW)", 
                                              min_value=0.0, 
@@ -200,6 +201,17 @@ distribuicao_tipos.columns = ['Tipo', 'Quantidade']
 fig_pie = px.pie(distribuicao_tipos, values='Quantidade', names='Tipo', title='Distribuição dos Tipos de Geração')
 st.plotly_chart(fig_pie, use_container_width=True)
 
+# Gráfico de Geração por Estado
+potencia_por_estado = df_filtrado.groupby('SigUFPrincipal')['potencia'].sum().reset_index()
+chart_estado = alt.Chart(potencia_por_estado).mark_bar().encode(
+    x='SigUFPrincipal',
+    y='potencia',
+    tooltip=['SigUFPrincipal', 'potencia']
+).properties(
+    title='Potência Total por Estado'
+)
+st.altair_chart(chart_estado, use_container_width=True)
+
 # Tabela de Dados
 st.subheader("Dados Filtrados")
 st.dataframe(df_filtrado)
@@ -211,9 +223,8 @@ def convert_df_to_csv(df):
 csv = convert_df_to_csv(df_filtrado)
 
 st.download_button(
-    "Baixar Dados Filtrados (CSV)",
-    csv,
-    "dados_filtrados.csv",
-    "text/csv",
-    key='download-csv'
+    label="Baixar Dados Filtrados (CSV)",
+    data=csv,
+    file_name="dados_filtrados.csv",
+    mime="text/csv",
 )
