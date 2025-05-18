@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import warnings
 import pydeck as pdk
+import altair as alt
+import plotly.express as px
 
 # Silencia warnings de parsing misto de datas
 warnings.filterwarnings("ignore", message="Parsing dates in")
@@ -85,6 +87,26 @@ tipos.sort()
 filtro = st.sidebar.multiselect("Tipo de Geração", tipos, default=tipos)
 df_filtrado = df[df['Tipo'].isin(filtro)]
 
+# --- Adicionando Filtros ---
+estados = df['SigUFPrincipal'].dropna().unique().tolist()
+estados.sort()
+filtro_estado = st.sidebar.multiselect("Estado", estados, default=estados)
+df_filtrado = df_filtrado[df_filtrado['SigUFPrincipal'].isin(filtro_estado)]
+
+if filtro_estado:
+    municipios = df_filtrado['Municipio'].dropna().unique().tolist()
+    municipios.sort()
+    filtro_municipio = st.sidebar.multiselect("Município", municipios, default=municipios)
+    df_filtrado = df_filtrado[df_filtrado['Municipio'].isin(filtro_municipio)]
+
+potencia_min, potencia_max = st.sidebar.slider("Faixa de Potência (kW)", 
+                                             min_value=0.0, 
+                                             max_value=float(df['potencia'].max()), 
+                                             value=(0.0, float(df['potencia'].max())))
+df_filtrado = df_filtrado[(df_filtrado['potencia'] >= potencia_min) & (df_filtrado['potencia'] <= potencia_max)]
+
+# --- Fim dos Filtros ---
+
 cores_tipo = {
     'Hidrelétrica': [0, 100, 255],
     'Pequena Central Hidrelétrica': [0, 180, 255],
@@ -125,9 +147,73 @@ st.pydeck_chart(pdk.Deck(
     tooltip=tooltip
 ))
 
-st.markdown("#### Legenda Interativa:")
+st.markdown("#### 🔵 Legenda Interativa:")
 
-for tipo, cor in cores_tipo.items():
-    with st.expander(f"{tipo}"):
-        st.markdown(f"<div style='display:inline-block;width:12px;height:12px;background-color:rgb{tuple(cor)};border-radius:50%;margin-right:8px'></div>", unsafe_allow_html=True)
-        st.write(TIPO_DESCRICAO.get(tipo, "Descrição não disponível."))
+# Usando columns para organizar os quadrados lado a lado
+num_colunas = 4  # Número de colunas desejado
+tipos_com_cores = list(cores_tipo.items())
+for i in range(0, len(tipos_com_cores), num_colunas):
+    colunas = st.columns(num_colunas)
+    for j in range(num_colunas):
+        if i + j < len(tipos_com_cores):
+            tipo, cor = tipos_com_cores[i + j]
+            with colunas[j]:
+                st.markdown(
+                    f"""
+                    <div style='display: flex; flex-direction: column; align-items: center; cursor: pointer;'
+                         onclick="document.getElementById('{tipo}').style.display = document.getElementById('{tipo}').style.display === 'block' ? 'none' : 'block';">
+                        <div style='width: 20px; height: 20px; background-color: rgb{tuple(cor)};'></div>
+                        <small style='text-align: center;'>{tipo}</small>
+                    </div>
+                    <div id='{tipo}' style='display: none; padding-top: 5px; text-align: justify;'>
+                        {TIPO_DESCRICAO.get(tipo, 'Descrição não disponível.')}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+# --- Adicionando Visualizações e Resumos ---
+
+st.markdown("---")
+st.subheader("Análise dos Dados")
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Total de Usinas", len(df_filtrado))
+col2.metric("Potência Total (kW)", f"{df_filtrado['potencia'].sum():,.2f}")
+col3.metric("Tipos de Geração", len(df_filtrado['Tipo'].unique()))
+
+# Gráfico de Barras
+potencia_por_tipo = df_filtrado.groupby('Tipo')['potencia'].sum().reset_index()
+chart_bar = alt.Chart(potencia_por_tipo).mark_bar().encode(
+    x='Tipo',
+    y='potencia',
+    tooltip=['Tipo', 'potencia']
+).properties(
+    title='Potência Total por Tipo de Geração'
+)
+st.altair_chart(chart_bar, use_container_width=True)
+
+# Gráfico de Pizza
+distribuicao_tipos = df_filtrado['Tipo'].value_counts().reset_index()
+distribuicao_tipos.columns = ['Tipo', 'Quantidade']
+fig_pie = px.pie(distribuicao_tipos, values='Quantidade', names='Tipo', title='Distribuição dos Tipos de Geração')
+st.plotly_chart(fig_pie, use_container_width=True)
+
+# Tabela de Dados
+st.subheader("Dados Filtrados")
+st.dataframe(df_filtrado)
+
+# Download dos Dados
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+csv = convert_df_to_csv(df_filtrado)
+
+st.download_button(
+    "Baixar Dados Filtrados (CSV)",
+    csv,
+    "dados_filtrados.csv",
+    "text/csv",
+    key='download-csv'
+)
