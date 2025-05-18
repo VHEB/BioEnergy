@@ -24,6 +24,21 @@ TIPO_GERACAO_NOMES = {
     'QSO': 'Outros'
 }
 
+# Descrição dos tipos de geração
+TIPO_DESCRICAO = {
+    'Hidrelétrica': 'Usinas que utilizam a força das águas para gerar eletricidade.',
+    'Pequena Central Hidrelétrica': 'Usinas hidrelétricas de pequeno porte, com capacidade limitada.',
+    'Central Geradora Hidrelétrica': 'Usinas de médio porte que geram energia a partir de recursos hídricos.',
+    'Eólica': 'Usinas que captam a energia dos ventos para produzir eletricidade.',
+    'Solar Fotovoltaica': 'Usinas que convertem a luz solar diretamente em energia elétrica.',
+    'Termelétrica': 'Usinas que geram eletricidade a partir da queima de combustíveis fósseis ou biomassa.',
+    'Biomassa': 'Usinas que utilizam matéria orgânica (resíduos agrícolas, madeira, etc.) para gerar energia.',
+    'Gás': 'Usinas que utilizam gás natural para produção de eletricidade.',
+    'Nuclear': 'Usinas que utilizam reações nucleares para gerar eletricidade.',
+    'Motores': 'Usinas de pequeno porte que utilizam motores a combustão para gerar energia.',
+    'Outros': 'Outros tipos de geração de energia elétrica.'
+}
+
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     df = pd.read_csv(
@@ -109,3 +124,10 @@ st.pydeck_chart(pdk.Deck(
     layers=[layer],
     tooltip=tooltip
 ))
+
+st.markdown("#### Legenda Interativa:")
+
+for tipo, cor in cores_tipo.items():
+    with st.expander(f"{tipo}"):
+        st.markdown(f"<div style='display:inline-block;width:12px;height:12px;background-color:rgb{tuple(cor)};border-radius:50%;margin-right:8px'></div>", unsafe_allow_html=True)
+        st.write(TIPO_DESCRICAO.get(tipo, "Descrição não disponível."))
