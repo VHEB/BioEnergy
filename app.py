@@ -9,7 +9,12 @@ import plotly.express as px
 # Silencia warnings de parsing misto de datas
 warnings.filterwarnings("ignore", message="Parsing dates in")
 
+# Configuração da página
 st.set_page_config(page_title="BioEnergy Dashboard", layout="wide")
+
+# =============================================
+# CONSTANTES E CONFIGURAÇÕES
+# =============================================
 
 # Mapeamento de siglas para nomes mais amigáveis
 TIPO_GERACAO_NOMES = {
@@ -24,7 +29,7 @@ TIPO_GERACAO_NOMES = {
     'NUC': 'Nuclear',
     'MOT': 'Motores',
     'QSO': 'Outros',
-    'UTN': 'Outros'  # Adicionado 'UTN' para corrigir o KeyError
+    'UTN': 'Outros'
 }
 
 # Descrição dos tipos de geração
@@ -39,133 +44,149 @@ TIPO_DESCRICAO = {
     'Gás': 'Usinas que utilizam gás natural para produção de eletricidade.',
     'Nuclear': 'Usinas que utilizam reações nucleares para gerar eletricidade.',
     'Motores': 'Usinas de pequeno porte que utilizam motores a combustão para gerar energia.',
-    'Outros': 'Outros tipos de geração de energia elétrica.',
-    'UTN': 'Outros tipos de geração de energia elétrica não especificados.'  # Descrição para UTN
+    'Outros': 'Outros tipos de geração de energia elétrica.'
 }
 
+# Cores para cada tipo de geração
+CORES_TIPO = {
+    'Hidrelétrica': [0, 100, 255],
+    'Pequena Central Hidrelétrica': [0, 180, 255],
+    'Central Geradora Hidrelétrica': [100, 200, 255],
+    'Eólica': [0, 200, 0],
+    'Solar Fotovoltaica': [255, 200, 0],
+    'Termelétrica': [255, 100, 100],
+    'Biomassa': [150, 255, 100],
+    'Gás': [255, 150, 0],
+    'Nuclear': [150, 0, 255],
+    'Motores': [255, 0, 150],
+    'Outros': [180, 180, 180]
+}
 
-def standardize_column_name(col_name: str) -> str:
-    """
-    Standardiza o nome de uma coluna, convertendo para minúsculas e substituindo espaços por underscores.
-
-    Args:
-        col_name: O nome da coluna a ser padronizado.
-
-    Returns:
-        O nome da coluna padronizado.
-    """
-    return col_name.lower().replace(' ', '_')
-
+# =============================================
+# FUNÇÕES AUXILIARES
+# =============================================
 
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """
     Carrega os dados de um arquivo CSV, realiza a limpeza e conversão de tipos.
-
-    Args:
-        path: O caminho para o arquivo CSV.
-
-    Returns:
-        Um DataFrame com os dados carregados e processados.
     """
     try:
-        df = pd.read_csv(
-            path,
-            sep=';',
-            encoding='latin1',
-            dtype=str
-        )
-    except FileNotFoundError:
-        st.error(f"Erro: Arquivo não encontrado em {path}. Verifique se o caminho está correto.")
-        return None  # Retorna None em caso de erro
+        df = pd.read_csv(path, sep=';', encoding='latin1', dtype=str)
+    except Exception as e:
+        st.error(f"Erro ao carregar arquivo: {str(e)}")
+        return None
 
-    # df.columns = [standardize_column_name(c) for c in df.columns]  # Remove a padronização aqui
+    # Verificação de colunas essenciais
+    colunas_necessarias = ['SigTipoGeracao', 'NumCoordNEmpreendimento', 'NumCoordEEmpreendimento']
+    for col in colunas_necessarias:
+        if col not in df.columns:
+            st.error(f"Coluna obrigatória não encontrada: {col}")
+            return None
 
-    # Verifica se a coluna 'SigTipoGeracao' existe
-    if 'SigTipoGeracao' not in df.columns:
-        st.error(
-            f"Erro: A coluna 'SigTipoGeracao' não foi encontrada no arquivo CSV. Verifique se o arquivo contém os dados corretos e se o nome da coluna está correto.")
-        return None  # Retorna None em caso de erro
-
-    # Imprime os nomes das colunas para debug
-    print("Nomes das colunas no DataFrame:")
-    print(df.columns)
-
-    for col in ['MdaPotenciaOutorgadaKw', 'MdaPotenciaFiscalizadaKw', 'MdaGarantiaFisicaKw']:
+    # Processamento de colunas numéricas
+    colunas_numericas = ['MdaPotenciaOutorgadaKw', 'MdaPotenciaFiscalizadaKw', 'MdaGarantiaFisicaKw']
+    for col in colunas_numericas:
         if col in df:
             df[col] = df[col].str.replace(',', '.', regex=False)
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-            na_count = df[col].isnull().sum()
-            if na_count > 0:
-                st.warning(f"Encontrados {na_count} valores não numéricos na coluna '{col}'. Substituindo por 0.")
-            df[col] = df[col].fillna(0)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    if 'IdcGeracaoQualificada' in df:
-        df['IdcGeracaoQualificada'] = df['IdcGeracaoQualificada'].str.lower() == 'sim'
+    # Processamento de colunas de coordenadas
+    df['lat'] = pd.to_numeric(df['NumCoordNEmpreendimento'].str.replace(',', '.', regex=False), errors='coerce')
+    df['lon'] = pd.to_numeric(df['NumCoordEEmpreendimento'].str.replace(',', '.', regex=False), errors='coerce')
 
-    df['lat'] = pd.to_numeric(df.get('NumCoordNEmpreendimento', pd.Series()).str.replace(',', '.', regex=False),
-                             errors='coerce')
-    df['lon'] = pd.to_numeric(df.get('NumCoordEEmpreendimento', pd.Series()).str.replace(',', '.', regex=False),
-                             errors='coerce')
-
+    # Adiciona coluna de potência
     if 'MdaPotenciaFiscalizadaKw' in df:
         df['potencia'] = df['MdaPotenciaFiscalizadaKw']
+    elif 'MdaPotenciaOutorgadaKw' in df:
+        df['potencia'] = df['MdaPotenciaOutorgadaKw']
+    else:
+        df['potencia'] = 0
 
-    df['tipo'] = df['SigTipoGeracao'].map(TIPO_GERACAO_NOMES).fillna(df['SigTipoGeracao'])
-
+    # Mapeia tipos de geração para nomes amigáveis
+    df['tipo'] = df['SigTipoGeracao'].map(TIPO_GERACAO_NOMES).fillna('Outros')
+    
+    # Processa município se a coluna existir
     if 'DscMuninicpios' in df:
         df['municipio'] = df['DscMuninicpios'].str.split(';').str[0]
 
     return df
 
+# =============================================
+# CARREGAMENTO DE DADOS
+# =============================================
 
 CSV_FILE = os.path.join(os.path.dirname(__file__), 'siga-empreendimentos-geracao.csv')
 df = load_data(CSV_FILE)
 
-if df is not None:  # Verifica se os dados foram carregados corretamente
-    st.image("logo.png", width=150)
-    st.title("BioEnergy")
-    st.write(
-        "A plataforma BioEnergy oferece uma visão completa e interativa sobre as usinas de geração de energia no Brasil. Explore diferentes tipos de geração de energia, visualize sua localização no mapa e analise a potência instalada em cada região.")
+if df is None:
+    st.error("Não foi possível carregar os dados. Verifique o arquivo CSV.")
+    st.stop()
 
-    st.sidebar.header("Filtros")
-    tipos = df['tipo'].dropna().unique().tolist()
-    tipos.sort()
-    filtro = st.sidebar.multiselect("Tipo de Geração", tipos, default=tipos)
-    df_filtrado = df[df['tipo'].isin(filtro)]
+# =============================================
+# INTERFACE DO USUÁRIO
+# =============================================
 
-    # --- Adicionando Filtros ---
-    estados = df['SigUFPrincipal'].dropna().unique().tolist()
-    estados.sort()
-    filtro_estado = st.sidebar.multiselect("Estado", estados, default=estados)
-    df_filtrado = df_filtrado[df['SigUFPrincipal'].isin(filtro_estado)]
+# Cabeçalho
+st.image("logo.png", width=150)
+st.title("BioEnergy")
+st.write(
+    "A plataforma BioEnergy oferece uma visão completa e interativa sobre as usinas de geração de energia no Brasil. "
+    "Explore diferentes tipos de geração de energia, visualize sua localização no mapa e analise a potência instalada "
+    "em cada região."
+)
 
-    potencia_min, potencia_max = st.sidebar.slider("Faixa de Potência (kW)",
-                                                 min_value=0.0,
-                                                 max_value=float(df['potencia'].max()),
-                                                 value=(0.0, float(df['potencia'].max())))
-    df_filtrado = df_filtrado[(df_filtrado['potencia'] >= potencia_min) & (df_filtrado['potencia'] <= potencia_max)]
+# =============================================
+# BARRA LATERAL COM FILTROS
+# =============================================
 
-    # Definindo cores_tipo
-    cores_tipo = {
-        'Hidrelétrica': [0, 100, 255],
-        'Pequena Central Hidrelétrica': [0, 180, 255],
-        'Central Geradora Hidrelétrica': [100, 200, 255],
-        'Eólica': [0, 200, 0],
-        'Solar Fotovoltaica': [255, 200, 0],
-        'Termelétrica': [255, 100, 100],
-        'Biomassa': [150, 255, 100],
-        'Gás': [255, 150, 0],
-        'Nuclear': [150, 0, 255],
-        'Motores': [255, 0, 150],
-        'Outros': [180, 180, 180],
-        'UTN': [180, 180, 180]  # Cor padrão para UTN
-    }
+st.sidebar.header("Filtros")
 
-    df_mapa = df_filtrado[
-        ['lat', 'lon', 'NomEmpreendimento', 'tipo', 'municipio', 'SigUFPrincipal', 'potencia']].dropna()
-    df_mapa['color'] = df_mapa['tipo'].map(cores_tipo)
+# Filtro por tipo de geração
+tipos = df['tipo'].dropna().unique().tolist()
+tipos.sort()
+filtro_tipo = st.sidebar.multiselect("Tipo de Geração", tipos, default=tipos)
 
+# Filtro por estado
+estados = df['SigUFPrincipal'].dropna().unique().tolist()
+estados.sort()
+filtro_estado = st.sidebar.multiselect("Estado", estados, default=estados)
+
+# Filtro por faixa de potência
+potencia_min, potencia_max = st.sidebar.slider(
+    "Faixa de Potência (kW)",
+    min_value=0.0,
+    max_value=float(df['potencia'].max()),
+    value=(0.0, float(df['potencia'].max()))
+)
+
+# Aplicação dos filtros
+df_filtrado = df[df['tipo'].isin(filtro_tipo)]
+df_filtrado = df_filtrado[df_filtrado['SigUFPrincipal'].isin(filtro_estado)]
+df_filtrado = df_filtrado[
+    (df_filtrado['potencia'] >= potencia_min) & 
+    (df_filtrado['potencia'] <= potencia_max)
+]
+
+# =============================================
+# VISUALIZAÇÃO DO MAPA
+# =============================================
+
+st.markdown("---")
+st.markdown("### Mapa de Usinas")
+
+# Prepara dados para o mapa
+df_mapa = df_filtrado[
+    ['lat', 'lon', 'NomEmpreendimento', 'tipo', 'municipio', 'SigUFPrincipal', 'potencia']
+].dropna()
+
+# CORREÇÃO APLICADA AQUI: Usando apply() em vez de map().fillna()
+df_mapa['color'] = df_mapa['tipo'].apply(lambda x: CORES_TIPO.get(x, [180, 180, 180]))
+
+if df_mapa.empty:
+    st.warning("Nenhuma usina encontrada com os filtros atuais.")
+else:
+    # Configuração do layer do mapa
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=df_mapa,
@@ -175,13 +196,13 @@ if df is not None:  # Verifica se os dados foram carregados corretamente
         pickable=True
     )
 
+    # Configuração do tooltip
     tooltip = {
-        "html": "<b>{NomEmpreendimento}</b><br/>Tipo: {tipo}<br/>Local: {municipio} - {sig_uf_principal}<br/>Potência: {potencia} kW",
-        "style": {"backgroundColor": "steelblue", "color": "white"}
+        "html": "<b>{NomEmpreendimento}</b><br/>Tipo: {tipo}<br/>Local: {municipio} - {SigUFPrincipal}<br/>Potência: {potencia:,.2f} kW",
+        "style": {"backgroundColor": "#4682B4", "color": "white"}
     }
 
-    st.markdown("---")
-    st.markdown("### Mapa de Usinas")
+    # Renderização do mapa
     st.pydeck_chart(pdk.Deck(
         map_style="mapbox://styles/mapbox/light-v9",
         initial_view_state=pdk.ViewState(latitude=-14.2, longitude=-51.9, zoom=4),
@@ -189,84 +210,83 @@ if df is not None:  # Verifica se os dados foram carregados corretamente
         tooltip=tooltip
     ))
 
-    st.markdown("#### 🔵 Legenda Interativa:")
+# Legenda interativa
+st.markdown("#### 🔵 Legenda Interativa:")
 
-    # Usando columns para organizar os quadrados lado a lado
-    num_colunas = 4  # Número de colunas desejado
-    tipos_com_cores = list(cores_tipo.items())
-    for i in range(0, len(tipos_com_cores), num_colunas):
-        colunas = st.columns(num_colunas)
-        for j in range(num_colunas):
-            if i + j < len(tipos_com_cores):
-                tipo, cor = tipos_com_cores[i + j]
-                with colunas[j]:
-                    st.markdown(
-                        f"""
-                        <div style='display: flex; flex-direction: column; align-items: center; cursor: pointer;'
-                             onclick="document.getElementById('{tipo}').style.display = document.getElementById('{tipo}').style.display === 'block' ? 'none' : 'block';">
-                            <div style='width: 20px; height: 20px; background-color: rgb{tuple(cor)};'></div>
-                            <small style='text-align: center; color: black;'>{tipo}</small>
-                        </div>
-                        <div id='{tipo}' style='display: none; padding-top: 5px; text-align: justify; background-color: white; color: black;'>
-                            {TIPO_DESCRICAO.get(tipo, 'Descrição não disponível.')}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+num_colunas = 4
+tipos_com_cores = list(CORES_TIPO.items())
+for i in range(0, len(tipos_com_cores), num_colunas):
+    colunas = st.columns(num_colunas)
+    for j in range(num_colunas):
+        if i + j < len(tipos_com_cores):
+            tipo, cor = tipos_com_cores[i + j]
+            with colunas[j]:
+                st.markdown(
+                    f"""
+                    <div style='display: flex; flex-direction: column; align-items: center; cursor: pointer;'
+                         onclick="document.getElementById('{tipo}').style.display = document.getElementById('{tipo}').style.display === 'block' ? 'none' : 'block';">
+                        <div style='width: 20px; height: 20px; background-color: rgb{tuple(cor)};'></div>
+                        <small style='text-align: center; color: black;'>{tipo}</small>
+                    </div>
+                    <div id='{tipo}' style='display: none; padding-top: 5px; text-align: justify; background-color: white; color: black;'>
+                        {TIPO_DESCRICAO.get(tipo, 'Descrição não disponível.')}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-    # --- Adicionando Visualizações e Resumos ---
+# =============================================
+# VISUALIZAÇÕES E ESTATÍSTICAS
+# =============================================
 
-    st.markdown("---")
-    st.subheader("Análise dos Dados")
+st.markdown("---")
+st.subheader("Análise dos Dados")
 
-    col1, col2, col3 = st.columns(3)
+# Métricas resumidas
+col1, col2, col3 = st.columns(3)
+col1.metric("Total de Usinas", len(df_filtrado))
+col2.metric("Potência Total (kW)", f"{df_filtrado['potencia'].sum():,.2f}")
+col3.metric("Tipos de Geração", len(df_filtrado['tipo'].unique()))
 
-    col1.metric("Total de Usinas", len(df_filtrado))
-    col2.metric("Potência Total (kW)", f"{df_filtrado['potencia'].sum():,.2f}")
-    col3.metric("Tipos de Geração", len(df_filtrado['tipo'].unique()))
-
-
-    # Gráfico de Pizza
+# Gráfico de Pizza
+if not df_filtrado.empty:
     distribuicao_tipos = df_filtrado.groupby('tipo')['potencia'].sum().reset_index()
-    distribuicao_tipos.columns = ['tipo', 'potencia']
-    fig_pie = px.pie(distribuicao_tipos, values='potencia', names='tipo',
-                 color='tipo', color_discrete_map=cores_tipo,
-                 title='Total de Potência por Tipo de Geração')
+    fig_pie = px.pie(
+        distribuicao_tipos, 
+        values='potencia', 
+        names='tipo',
+        color='tipo', 
+        color_discrete_map=CORES_TIPO,
+        title='Total de Potência por Tipo de Geração'
+    )
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Gráfico de Geração por Estado
+# Gráfico de Barras por Estado
+if not df_filtrado.empty and 'SigUFPrincipal' in df_filtrado.columns:
     potencia_por_estado = df_filtrado.groupby('SigUFPrincipal')['potencia'].sum().reset_index()
-    if not potencia_por_estado.empty:
-        chart_estado = alt.Chart(potencia_por_estado).mark_bar().encode(
-            x=alt.X('SigUFPrincipal', title='Estado'),
-            y=alt.Y('potencia', title='Potência Total (kW)'),
-            color=alt.Color('SigUFPrincipal',
-                            scale=alt.Scale(domain=estados, range=list(cores_tipo.values())[:len(estados)])
-                            , legend=alt.Legend(title="Estado")
-                            ),
-            tooltip=['SigUFPrincipal', 'potencia']
-        ).properties(
-            title='Potência Total por Estado'
-        ).interactive()
-        st.altair_chart(chart_estado, use_container_width=True)
-    else:
-        st.warning("Não há dados suficientes para exibir o gráfico de Potência Total por Estado com os filtros selecionados.")
+    chart_estado = alt.Chart(potencia_por_estado).mark_bar().encode(
+        x=alt.X('SigUFPrincipal', title='Estado'),
+        y=alt.Y('potencia', title='Potência Total (kW)'),
+        color=alt.Color('SigUFPrincipal', scale=alt.Scale(scheme='category20'), legend=None),
+        tooltip=['SigUFPrincipal', 'potencia']
+    ).properties(
+        title='Potência Total por Estado'
+    ).interactive()
+    st.altair_chart(chart_estado, use_container_width=True)
 
+# Tabela de dados e opção de download
+st.subheader("Dados Filtrados")
+st.dataframe(df_filtrado)
 
-    # Tabela de Dados
-    st.subheader("Dados Filtrados")
-    st.dataframe(df_filtrado)
+# Botão de download
+@st.cache_data
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
 
-    # Download dos Dados
-    def convert_df_to_csv(df):
-        return df.to_csv(index=False).encode('utf-8')
-
-
-    csv = convert_df_to_csv(df_filtrado)
-
-    st.download_button(
-        label="Baixar Dados Filtrados (CSV)",
-        data=csv,
-        file_name="dados_filtrados.csv",
-        mime="text/csv",
-    )
+csv = convert_df_to_csv(df_filtrado)
+st.download_button(
+    label="Baixar Dados Filtrados (CSV)",
+    data=csv,
+    file_name="dados_filtrados.csv",
+    mime="text/csv",
+)
