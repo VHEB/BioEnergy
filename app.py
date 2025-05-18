@@ -226,55 +226,32 @@ if df is not None:  # Verifica se os dados foram carregados corretamente
     col3.metric("Tipos de Geração", len(df_filtrado['tipo'].unique()))
 
 
-    def plot_bar_chart(data: pd.DataFrame, x_col: str, y_col: str, title: str,
-                       color_scale: dict = None) -> alt.Chart:
-        """
-        Cria um gráfico de barras com interatividade.
-
-        Args:
-            data: O DataFrame com os dados.
-            x_col: A coluna para o eixo x.
-            y_col: A coluna para o eixo y.
-            title: O título do gráfico.
-            color_scale: Um dicionário opcional para mapear valores de x_col para cores.
-
-        Returns:
-            Um objeto de gráfico Altair.
-        """
-        if color_scale:
-            color = alt.Color(x_col,
-                              scale=alt.Scale(domain=list(color_scale.keys()), range=list(color_scale.values())),
-                              legend=None)
-        else:
-            color = x_col
-        chart = alt.Chart(data).mark_bar().encode(
-            x=alt.X(x_col, title=x_col.capitalize()),
-            y=alt.Y(y_col, title=y_col.capitalize()),
-            tooltip=[x_col, y_col],
-            color=color
-        ).properties(
-            title=title
-        ).interactive()  # Adiciona interatividade para zoom e pan
-        return chart
-
-
-    # Gráfico de Barras
-    potencia_por_tipo = df_filtrado.groupby('tipo')['potencia'].sum().reset_index()
-    chart_bar = plot_bar_chart(potencia_por_tipo, 'tipo', 'potencia', 'Potência Total por Tipo de Geração', cores_tipo)
-    st.altair_chart(chart_bar, use_container_width=True)
-
     # Gráfico de Pizza
-    distribuicao_tipos = df_filtrado['tipo'].value_counts().reset_index()
-    distribuicao_tipos.columns = ['tipo', 'quantidade']
-    fig_pie = px.pie(distribuicao_tipos, values='quantidade', names='tipo',
-                 color='tipo', color_discrete_map=cores_tipo,  # Aplica cores da legenda
-                 title='Distribuição dos Tipos de Geração')
+    distribuicao_tipos = df_filtrado.groupby('tipo')['potencia'].sum().reset_index()
+    distribuicao_tipos.columns = ['tipo', 'potencia']
+    fig_pie = px.pie(distribuicao_tipos, values='potencia', names='tipo',
+                 color='tipo', color_discrete_map=cores_tipo,
+                 title='Total de Potência por Tipo de Geração')
     st.plotly_chart(fig_pie, use_container_width=True)
 
     # Gráfico de Geração por Estado
     potencia_por_estado = df_filtrado.groupby('SigUFPrincipal')['potencia'].sum().reset_index()
-    chart_estado = plot_bar_chart(potencia_por_estado, 'SigUFPrincipal', 'potencia', 'Potência Total por Estado')
-    st.altair_chart(chart_estado, use_container_width=True)
+    if not potencia_por_estado.empty:
+        chart_estado = alt.Chart(potencia_por_estado).mark_bar().encode(
+            x=alt.X('SigUFPrincipal', title='Estado'),
+            y=alt.Y('potencia', title='Potência Total (kW)'),
+            color=alt.Color('SigUFPrincipal',
+                            scale=alt.Scale(domain=estados, range=list(cores_tipo.values())[:len(estados)])
+                            , legend=alt.Legend(title="Estado")
+                            ),
+            tooltip=['SigUFPrincipal', 'potencia']
+        ).properties(
+            title='Potência Total por Estado'
+        ).interactive()
+        st.altair_chart(chart_estado, use_container_width=True)
+    else:
+        st.warning("Não há dados suficientes para exibir o gráfico de Potência Total por Estado com os filtros selecionados.")
+
 
     # Tabela de Dados
     st.subheader("Dados Filtrados")
